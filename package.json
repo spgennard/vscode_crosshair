@@ -1,0 +1,70 @@
+{
+    "name": "vscode-crosshair",
+    "displayName": "Editor Crosshair",
+    "description": "Displays both a horizontal and vertical ruler at the cursor position",
+    "version": "0.0.2",
+    "publisher": "bitlang",
+    "engines": {
+        "vscode": "^1.23.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "activationEvents": [
+        "*"
+    ],
+    "main": "./out/extension",
+    "icon": "images/crosshair.png",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/spgennard/vscode_crosshair"
+    },
+    "contributes": {
+        "configuration": {
+            "properties": {
+                "crosshair.borderColor": {
+                    "type": [
+                        "string"
+                    ],
+                    "default": "#00FF00",
+                    "description": "Change the border color. (Ex: 'red', '#FFF' #FFFFFFF, 'RGB(255,255,255)','RGB(255, 255, 255. 0.5) )"
+                },
+                "crosshair.borderWidth": {
+                    "type": [
+                        "string"
+                    ],
+                    "default": "0.1px"
+                },
+                "crosshair.borderStyle": {
+                    "type": [
+                        "string"
+                    ],
+                    "enum": [
+                        "solid",
+                        "dashed",
+                        "inset",
+                        "double",
+                        "groove",
+                        "outset",
+                        "ridge"
+                    ],
+                    "default": "solid"
+                }
+            }
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "postinstall": "node ./node_modules/vscode/bin/install",
+        "test": "npm run compile && node ./node_modules/vscode/bin/test"
+    },
+    "devDependencies": {
+        "typescript": "^2.6.1",
+        "vscode": "^1.1.6",
+        "tslint": "^5.8.0",
+        "@types/node": "^7.0.43",
+        "@types/mocha": "^2.2.42"
+    }
+}
