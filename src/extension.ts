@@ -1,13 +1,17 @@
 'use strict';
 
-
 import {
     window, workspace, DecorationRangeBehavior,
     TextEditorDecorationType, ExtensionContext,
     Position, Range,
     TextEditor,
+    StatusBarItem,
+    StatusBarAlignment,
+    commands
 } from 'vscode';
 
+let toggleCrosshair: StatusBarItem;
+let isActive : boolean = true;
 
 function getDecorationTypeFromConfig(): TextEditorDecorationType {
     const config = workspace.getConfiguration("crosshair");
@@ -94,6 +98,15 @@ function updateDecorations(activeTextEditor: TextEditor,
     decorationType: TextEditorDecorationType,
     decorationTypeBlock: TextEditorDecorationType,
     updateAllVisibleEditors = false) {
+
+    if (!isActive) {
+        const newDecorations: Range[] = [];
+        const newDecorationsLines: Range[] = [];
+        activeTextEditor.setDecorations(decorationType, newDecorations);
+        activeTextEditor.setDecorations(decorationTypeBlock, newDecorationsLines);
+        window.showTextDocument(activeTextEditor.document);
+        return;
+    }
     try {
         if (updateAllVisibleEditors) {
             window.visibleTextEditors.forEach((editor) => {
@@ -124,6 +137,8 @@ export function activate(context: ExtensionContext) {
     let decorationTypeBlock = getDecorationTypeCursorFromConfig();
     let decorationType = getDecorationTypeFromConfig();
 
+    let timeout: NodeJS.Timer | undefined = undefined;
+
     window.onDidChangeActiveTextEditor(() => {
         if (window.activeTextEditor !== undefined) {
             try {
@@ -139,6 +154,46 @@ export function activate(context: ExtensionContext) {
             updateDecorations(window.activeTextEditor, decorationType, decorationTypeBlock);
         }
     });
+
+    workspace.onDidChangeTextDocument(event => {
+		if (activeEditor && event.document === activeEditor.document) {
+			triggerUpdateDecorations();
+		}
+    }, null, context.subscriptions);
+
+    var toggleCrosshairCommand = commands.registerCommand('crosshair.toggle_crosshair', function () {
+        isActive = !isActive;
+        triggerUpdateDecorations();
+    });
+
+    context.subscriptions.push(toggleCrosshairCommand);
+
+    toggleCrosshair = window.createStatusBarItem(StatusBarAlignment.Right);
+    toggleCrosshair.text = "＋ₐ";
+    toggleCrosshair.command = "crosshair.toggle_crosshair";
+    toggleCrosshair.show();
+
+    let activeEditor = window.activeTextEditor;
+
+	function updateDecorationsTimer() {
+		if (!activeEditor) {
+            return;
+        }
+        updateDecorations(activeEditor, decorationType, decorationTypeBlock);
+    }
+
+    function triggerUpdateDecorations() {
+		if (timeout) {
+			clearTimeout(timeout);
+			timeout = undefined;
+		}
+		timeout = setTimeout(updateDecorationsTimer, 500);
+	}
+
+    if (activeEditor) {
+		triggerUpdateDecorations();
+    }
+
 }
 
 // this method is called when your extension is deactivated
