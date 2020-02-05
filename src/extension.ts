@@ -11,7 +11,7 @@ import {
 } from 'vscode';
 
 let toggleCrosshair: StatusBarItem;
-let isActive : boolean = true;
+let isActive: boolean = true;
 
 function getDecorationTypeFromConfig(): TextEditorDecorationType {
     const config = workspace.getConfiguration("crosshair");
@@ -22,7 +22,7 @@ function getDecorationTypeFromConfig(): TextEditorDecorationType {
         borderWidth: `0 0 ${borderWidth} 0`,
         borderStyle: 'solid',
         rangeBehavior: DecorationRangeBehavior.ClosedClosed,
-        borderColor
+        borderColor: `${borderColor}`
     });
     return decorationType;
 }
@@ -35,7 +35,7 @@ function getDecorationTypeCursorFromConfig(): TextEditorDecorationType {
         borderStyle: 'solid',
         rangeBehavior: DecorationRangeBehavior.ClosedClosed,
         borderWidth: `0 ${borderWidth} 0 0`,
-        borderColor
+        borderColor: `${borderColor}`
     });
 
 
@@ -63,34 +63,31 @@ function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Position
         end_cline = maxLines;
     }
     let prevChar = currentPosition.character > 0 ? currentPosition.character - 1 : 0;
-    for (let p = start_cline; p < end_cline; p++) {
-        if (p > maxLines || p === 0) {
-            break;
+    editor.edit(edit => {
+        for (let p = start_cline; p < end_cline; p++) {
+            if (p > maxLines || p === 0) {
+                break;
+            }
+            let cline = editor.document.lineAt(p);
+            let missing = currentPosition.character - cline.text.length;
+
+            if (missing > 0) {
+                let c = 0;
+                let s = "";
+                for (c = 0; c < missing; c++) {
+                    s += " ";
+                }
+
+                edit.insert(new Position(p, cline.text.length), s);
+            }
+            let pos = new Position(p, prevChar);
+            let currentPos = new Position(p, currentPosition.character);
+            newDecorationsLines.push(new Range(pos, currentPos));
         }
-        let cline = editor.document.lineAt(p);
-        let missing =  currentPosition.character - cline.text.length;
+        editor.setDecorations(decorationType, newDecorations);
+        editor.setDecorations(decorationTypeBlock, newDecorationsLines);
 
-         if (missing > 0) {
-             let c=0;
-             let s="";
-             for(c=0; c<missing; c++) {
-                s += " ";
-             }
-             editor.edit(edit => {
-                    edit.insert(new Position(p,cline.text.length), s);
-                  }
-                );
-            
-            //  let theend = TextEdit.insert(new Position(p, cline.text.length),s);
-            //  editor.edit()
-
-         }
-        let pos = new Position(p, prevChar);
-        let currentPos = new Position(p, currentPosition.character);
-        newDecorationsLines.push(new Range(pos, currentPos));
-    }
-    editor.setDecorations(decorationType, newDecorations);
-    editor.setDecorations(decorationTypeBlock, newDecorationsLines);
+    });
 }
 
 
@@ -156,9 +153,9 @@ export function activate(context: ExtensionContext) {
     });
 
     workspace.onDidChangeTextDocument(event => {
-		if (activeEditor && event.document === activeEditor.document) {
-			triggerUpdateDecorations();
-		}
+        if (activeEditor && event.document === activeEditor.document) {
+            triggerUpdateDecorations();
+        }
     }, null, context.subscriptions);
 
     var toggleCrosshairCommand = commands.registerCommand('crosshair.toggle_crosshair', function () {
@@ -169,29 +166,29 @@ export function activate(context: ExtensionContext) {
     context.subscriptions.push(toggleCrosshairCommand);
 
     toggleCrosshair = window.createStatusBarItem(StatusBarAlignment.Right);
-    toggleCrosshair.text = "＋ₐ";
+    toggleCrosshair.text = "+";
     toggleCrosshair.command = "crosshair.toggle_crosshair";
     toggleCrosshair.show();
 
     let activeEditor = window.activeTextEditor;
 
-	function updateDecorationsTimer() {
-		if (!activeEditor) {
+    function updateDecorationsTimer() {
+        if (!activeEditor) {
             return;
         }
         updateDecorations(activeEditor, decorationType, decorationTypeBlock);
     }
 
     function triggerUpdateDecorations() {
-		if (timeout) {
-			clearTimeout(timeout);
-			timeout = undefined;
-		}
-		timeout = setTimeout(updateDecorationsTimer, 500);
-	}
+        if (timeout) {
+            clearTimeout(timeout);
+            timeout = undefined;
+        }
+        timeout = setTimeout(updateDecorationsTimer, 200);
+    }
 
     if (activeEditor) {
-		triggerUpdateDecorations();
+        triggerUpdateDecorations();
     }
 
 }

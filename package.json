@@ -51,6 +51,11 @@
                     "default": "solid"
                 }
             }
+        },
+        "configurationDefaults": {
+            "editor.trimAutoWhitespace": true,
+            "files.trimFinalNewlines": true,
+            "files.trimTrailingWhitespace": true
         }
     },
     "scripts": {
