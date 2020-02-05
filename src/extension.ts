@@ -7,11 +7,32 @@ import {
     TextEditor,
     StatusBarItem,
     StatusBarAlignment,
-    commands
+    commands,
+    ConfigurationTarget
 } from 'vscode';
 
 let toggleCrosshair: StatusBarItem;
-let isActive: boolean = true;
+let isActive: boolean = getEnabledFromConfig();
+
+function getEnabledFromConfig(): boolean {
+    const config = workspace.getConfiguration("crosshair");
+
+    let enabled: boolean | undefined = config.get<boolean>("enabled");
+
+    return enabled === undefined ? false : enabled;
+}
+
+function getSize(): number {
+    const config = workspace.getConfiguration("crosshair");
+
+    return config.get<number>("size", 10);
+}
+
+function getRefreshRate(): number {
+    const config = workspace.getConfiguration("crosshair");
+
+    return config.get<number>("refreshRate", 500);
+}
 
 function getDecorationTypeFromConfig(): TextEditorDecorationType {
     const config = workspace.getConfiguration("crosshair");
@@ -38,51 +59,60 @@ function getDecorationTypeCursorFromConfig(): TextEditorDecorationType {
         borderColor: `${borderColor}`
     });
 
-
     return decorationType;
 }
 
 function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Position,
     decorationType: TextEditorDecorationType,
     decorationTypeBlock: TextEditorDecorationType) {
+
     const newDecorations = [new Range(currentPosition, currentPosition)];
     const newDecorationsLines = [new Range(currentPosition, currentPosition)];
 
     let maxLines = editor.document.lineCount;
     let start_cline: number = currentPosition.line;
     let end_cline = start_cline;
-    if (start_cline > 10) {
-        start_cline -= 10;
+    let config_size = getSize();
+    if (start_cline > config_size) {
+        start_cline -= config_size;
     }
 
     if (start_cline < 0) {
         start_cline = 0;
     }
-    end_cline += 10;
+
+    end_cline += config_size;
     if (end_cline > maxLines) {
         end_cline = maxLines;
     }
+
     let prevChar = currentPosition.character > 0 ? currentPosition.character - 1 : 0;
+
     editor.edit(edit => {
-        for (let p = start_cline; p < end_cline; p++) {
-            if (p > maxLines || p === 0) {
-                break;
-            }
-            let cline = editor.document.lineAt(p);
-            let missing = currentPosition.character - cline.text.length;
-
-            if (missing > 0) {
-                let c = 0;
-                let s = "";
-                for (c = 0; c < missing; c++) {
-                    s += " ";
+        try {
+            for (let p = start_cline; p < end_cline; p++) {
+                if (p > maxLines || p === 0) {
+                    break;
                 }
+                let cline = editor.document.lineAt(p);
+                let missing = currentPosition.character - cline.text.length;
 
-                edit.insert(new Position(p, cline.text.length), s);
+                if (missing > 0) {
+                    let c = 0;
+                    let s = "";
+                    for (c = 0; c < missing; c++) {
+                        s += " ";
+                    }
+
+                    edit.insert(new Position(p, cline.text.length), s);
+                }
+                let pos = new Position(p, prevChar);
+                let currentPos = new Position(p, currentPosition.character);
+                newDecorationsLines.push(new Range(pos, currentPos));
             }
-            let pos = new Position(p, prevChar);
-            let currentPos = new Position(p, currentPosition.character);
-            newDecorationsLines.push(new Range(pos, currentPos));
+        }
+        catch(e) {
+            console.log("crosshair space filler",e);
         }
         editor.setDecorations(decorationType, newDecorations);
         editor.setDecorations(decorationTypeBlock, newDecorationsLines);
@@ -121,7 +151,7 @@ function updateDecorations(activeTextEditor: TextEditor,
         }
     }
     catch (error) {
-        console.error("Error from ' updateDecorations' -->", error);
+        console.log("crosshair 'updateDecorations' -->", error);
     } finally {
         return new Position(activeTextEditor.selection.active.line, activeTextEditor.selection.active.character);
     }
@@ -141,7 +171,7 @@ export function activate(context: ExtensionContext) {
             try {
                 updateDecorations(window.activeTextEditor, decorationType, decorationTypeBlock);
             } catch (error) {
-                console.error("Error from ' window.onDidChangeActiveTextEditor' -->", error);
+                console.log("crosshair 'window.onDidChangeActiveTextEditor' -->", error);
             }
         }
     });
@@ -160,7 +190,14 @@ export function activate(context: ExtensionContext) {
 
     var toggleCrosshairCommand = commands.registerCommand('crosshair.toggle_crosshair', function () {
         isActive = !isActive;
+        const config = workspace.getConfiguration("crosshair");
+
         triggerUpdateDecorations();
+        if (workspace.workspaceFolders === undefined) {
+            config.update("enabled", isActive, ConfigurationTarget.Global);
+        } else {
+            config.update("enabled", isActive, ConfigurationTarget.Workspace);
+        }
     });
 
     context.subscriptions.push(toggleCrosshairCommand);
@@ -184,11 +221,15 @@ export function activate(context: ExtensionContext) {
             clearTimeout(timeout);
             timeout = undefined;
         }
-        timeout = setTimeout(updateDecorationsTimer, 200);
+        timeout = setTimeout(updateDecorationsTimer, getRefreshRate());
     }
 
     if (activeEditor) {
         triggerUpdateDecorations();
+    }
+
+    if (isActive === false) {
+        window.setStatusBarMessage('Crosshair disabled', 5000);
     }
 
 }

@@ -2,7 +2,7 @@
     "name": "vscode-crosshair",
     "displayName": "Editor Crosshair",
     "description": "Displays both a horizontal and vertical ruler at the cursor position",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "publisher": "bitlang",
     "engines": {
         "vscode": "^1.23.0"
@@ -22,23 +22,32 @@
     "contributes": {
         "configuration": {
             "properties": {
+                "crosshair.enabled": {
+                    "type": "boolean",
+                    "default": "true",
+                    "description": "Enable or disable the crosshair extension"
+                },
+                "crosshair.refreshRate": {
+                    "type": "number",
+                    "default": "250",
+                    "description": "Crosshair refresh rate in ms"
+                },
+                "crosshair.size": {
+                    "type": "number",
+                    "default": "10",
+                    "description": "Size of crosshair"
+                },
                 "crosshair.borderColor": {
-                    "type": [
-                        "string"
-                    ],
+                    "type": "string",
                     "default": "#00FF00",
                     "description": "Change the border color. (Ex: 'red', '#FFF' #FFFFFFF, 'RGB(255,255,255)','RGB(255, 255, 255. 0.5) )"
                 },
                 "crosshair.borderWidth": {
-                    "type": [
-                        "string"
-                    ],
+                    "type": "string",
                     "default": "0.1px"
                 },
                 "crosshair.borderStyle": {
-                    "type": [
-                        "string"
-                    ],
+                    "type": "string",
                     "enum": [
                         "solid",
                         "dashed",
