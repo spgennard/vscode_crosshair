@@ -2,10 +2,10 @@
     "name": "vscode-crosshair",
     "displayName": "Editor Crosshair",
     "description": "Displays both a horizontal and vertical ruler at the cursor position",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "publisher": "bitlang",
     "engines": {
-        "vscode": "^1.23.0"
+        "vscode": "^1.22.0"
     },
     "categories": [
         "Other"
@@ -75,10 +75,11 @@
         "test": "npm run compile && node ./node_modules/vscode/bin/test"
     },
     "devDependencies": {
-        "typescript": "^3.7.5",
-        "vscode": "^1.1.36",
-        "tslint": "^6.0.0",
-        "@types/node": "^13.7.0",
-        "@types/mocha": "^7.0.1"
+        "@types/mocha": "^7.0.2",
+        "@types/node": "^13.9.2",
+        "minimist": ">=1.2.5",
+        "tslint": "^6.1.0",
+        "typescript": "^3.8.3",
+        "vscode": "^1.1.36"
     }
 }
