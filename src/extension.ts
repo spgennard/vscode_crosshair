@@ -1,5 +1,6 @@
 'use strict';
 
+import { config } from 'process';
 import {
     window, workspace, DecorationRangeBehavior,
     TextEditorDecorationType, ExtensionContext,
@@ -70,18 +71,14 @@ function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Position
     const newDecorationsLines = [new Range(currentPosition, currentPosition)];
 
     let maxLines = editor.document.lineCount;
-    let start_cline: number = currentPosition.line;
-    let end_cline = start_cline;
-    let config_size = getSize();
-    if (start_cline > config_size) {
-        start_cline -= config_size;
-    }
+    let config_size:number = getSize();
+    let start_cline: number = currentPosition.line - config_size + 1;
+    let end_cline: number = currentPosition.line + config_size + 1;
 
-    if (start_cline < 0) {
+    if (start_cline <= 0) {
         start_cline = 0;
     }
 
-    end_cline += config_size;
     if (end_cline > maxLines) {
         end_cline = maxLines;
     }
@@ -91,7 +88,7 @@ function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Position
     editor.edit(edit => {
         try {
             for (let p = start_cline; p < end_cline; p++) {
-                if (p > maxLines || p === 0) {
+                if (p > maxLines) {
                     break;
                 }
                 let cline = editor.document.lineAt(p);
@@ -134,6 +131,7 @@ function updateDecorations(activeTextEditor: TextEditor,
         window.showTextDocument(activeTextEditor.document);
         return;
     }
+
     try {
         if (updateAllVisibleEditors) {
             window.visibleTextEditors.forEach((editor) => {
