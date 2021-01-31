@@ -1,6 +1,5 @@
 'use strict';
 
-import { config } from 'process';
 import {
     window, workspace, DecorationRangeBehavior,
     TextEditorDecorationType, ExtensionContext,
@@ -63,7 +62,16 @@ function getDecorationTypeCursorFromConfig(): TextEditorDecorationType {
     return decorationType;
 }
 
-function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Position,
+export async function convertToTabsPicker(): Promise<boolean> {
+    let i = 0;
+    const result = await window.showQuickPick(['Convert', 'Disable'], {
+        placeHolder: 'crosshair extensions found tabs in current document\n \'Convert\' to spaces or \'Disable\'?'
+    });
+
+    return `${result}` === "Convert" ? true : false;
+}
+
+async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Position,
     decorationType: TextEditorDecorationType,
     decorationTypeBlock: TextEditorDecorationType) {
 
@@ -71,7 +79,7 @@ function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Position
     const newDecorationsLines = [new Range(currentPosition, currentPosition)];
 
     let maxLines = editor.document.lineCount;
-    let config_size:number = getSize();
+    let config_size: number = getSize();
     let start_cline: number = currentPosition.line - config_size + 1;
     let end_cline: number = currentPosition.line + config_size + 1;
 
@@ -85,14 +93,37 @@ function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Position
 
     let prevChar = currentPosition.character > 0 ? currentPosition.character - 1 : 0;
 
-    editor.edit(edit => {
+    try {
+        for (let p = start_cline; p < end_cline; p++) {
+            if (p > maxLines) {
+                break;
+            }
+            let cline = editor.document.lineAt(p);
+            let clineText = cline.text;
+            if (clineText.indexOf("\t") !== -1) {
+                let convertToTabs = await convertToTabsPicker();
+                if (!convertToTabs) {
+                    isActive = false;
+                    return;
+                }
+                await commands.executeCommand('editor.action.indentationToSpaces');
+                isActive = true;
+            }
+        }
+    }
+    catch (e) {
+        console.log("crosshair tabconvert", e);
+    }
+
+    await editor.edit(async edit => {
         try {
             for (let p = start_cline; p < end_cline; p++) {
                 if (p > maxLines) {
                     break;
                 }
                 let cline = editor.document.lineAt(p);
-                let missing = currentPosition.character - cline.text.length;
+                let clineText = cline.text;
+                let missing = currentPosition.character - clineText.length;
 
                 if (missing > 0) {
                     let c = 0;
@@ -101,19 +132,18 @@ function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Position
                         s += " ";
                     }
 
-                    edit.insert(new Position(p, cline.text.length), s);
+                    edit.insert(new Position(p, clineText.length), s);
                 }
                 let pos = new Position(p, prevChar);
                 let currentPos = new Position(p, currentPosition.character);
                 newDecorationsLines.push(new Range(pos, currentPos));
             }
         }
-        catch(e) {
-            console.log("crosshair space filler",e);
+        catch (e) {
+            console.log("crosshair space filler", e);
         }
         editor.setDecorations(decorationType, newDecorations);
         editor.setDecorations(decorationTypeBlock, newDecorationsLines);
-
     });
 }
 
