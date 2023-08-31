@@ -192,7 +192,7 @@ export function activate(context: ExtensionContext) {
     let decorationTypeBlock = getDecorationTypeCursorFromConfig();
     let decorationType = getDecorationTypeFromConfig();
 
-    let timeout: NodeJS.Timer | undefined = undefined;
+    let timeout: NodeJS.Timeout | undefined = undefined;
 
     window.onDidChangeActiveTextEditor(() => {
         if (window.activeTextEditor !== undefined) {
