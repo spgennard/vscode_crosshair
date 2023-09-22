@@ -34,6 +34,12 @@ function getRefreshRate(): number {
     return config.get<number>("refreshRate", 500);
 }
 
+function getAutoTabToSpaces(): boolean {
+    const config = workspace.getConfiguration("crosshair");
+
+    return config.get<boolean>("autoTabToSpace", true);
+}
+
 function getDecorationTypeFromConfig(): TextEditorDecorationType {
     const config = workspace.getConfiguration("crosshair");
     const borderColor = config.get("borderColor");
@@ -101,12 +107,14 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
             let cline = editor.document.lineAt(p);
             let clineText = cline.text;
             if (clineText.indexOf("\t") !== -1) {
-                let convertToTabs = await convertToTabsPicker();
-                if (!convertToTabs) {
+                let autoTabToSpaces = await getAutoTabToSpaces();
+                if (!autoTabToSpaces) {
                     isActive = false;
+                    window.showInformationMessage("Crosshair: Tabs found in document, extension is disabled");
                     return;
                 }
                 await commands.executeCommand('editor.action.indentationToSpaces');
+                p = start_cline; // reset loop
                 isActive = true;
             }
         }

@@ -2,7 +2,7 @@
     "name": "vscode-crosshair",
     "displayName": "Editor Crosshair",
     "description": "Displays both a horizontal and vertical ruler at the cursor position",
-    "version": "0.4.0",
+    "version": "0.4.1",
     "publisher": "bitlang",
     "engines": {
         "vscode": "^1.82.0"
@@ -59,15 +59,21 @@
                         "ridge"
                     ],
                     "default": "solid"
+                },
+                "crosshair.autoTabToSpace": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Automatically convert tabs to spaces"
                 }
             }
         },
         "configurationDefaults": {
-            "[wibble]": {
-                "editor.trimAutoWhitespace": true,
-                "files.trimFinalNewlines": true,
-                "files.trimTrailingWhitespace": true
-            }
+            "editor.useTabStops": false,
+            "editor.insertSpaces": true,
+            "editor.detectIndentation": true,
+            "editor.trimAutoWhitespace": true,
+            "files.trimFinalNewlines": true,
+            "files.trimTrailingWhitespace": true
         }
     },
     "scripts": {
