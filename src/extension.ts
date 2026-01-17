@@ -8,8 +8,19 @@ import {
     StatusBarItem,
     StatusBarAlignment,
     commands,
-    ConfigurationTarget
+    ConfigurationTarget,
+    WorkspaceEdit
 } from 'vscode';
+
+// Interface to track added spaces
+interface AddedSpaces {
+    line: number;
+    startPos: number;
+    length: number;
+}
+
+// Map to track added spaces by document URI
+const addedSpacesMap = new Map<string, AddedSpaces[]>();
 
 let toggleCrosshair: StatusBarItem;
 let isActive: boolean = getEnabledFromConfig();
@@ -68,6 +79,49 @@ function getDecorationTypeCursorFromConfig(): TextEditorDecorationType {
     return decorationType;
 }
 
+async function removePreviouslyAddedSpaces(editor: TextEditor): Promise<void> {
+    const documentUri = editor.document.uri.toString();
+    const addedSpaces = addedSpacesMap.get(documentUri);
+    
+    if (!addedSpaces || addedSpaces.length === 0) {
+        return;
+    }
+
+    // Sort by line number in descending order to avoid position shifts
+    addedSpaces.sort((a, b) => b.line - a.line);
+
+    const edit = new WorkspaceEdit();
+    
+    for (const space of addedSpaces) {
+        // Check if the line still exists and has the spaces we added
+        if (space.line < editor.document.lineCount) {
+            const line = editor.document.lineAt(space.line);
+            const endPos = line.text.length;
+            const startPos = space.startPos;
+            
+            // Only remove if the spaces are still there and are at the end of the line
+            if (endPos >= startPos + space.length) {
+                const spacesToRemove = line.text.substring(startPos, startPos + space.length);
+                // Check if it's only spaces (not user-added content)
+                if (spacesToRemove.match(/^ *$/)) {
+                    const range = new Range(
+                        new Position(space.line, startPos),
+                        new Position(space.line, startPos + space.length)
+                    );
+                    edit.delete(editor.document.uri, range);
+                }
+            }
+        }
+    }
+
+    if (edit.size > 0) {
+        await workspace.applyEdit(edit);
+    }
+    
+    // Clear the tracking for this document
+    addedSpacesMap.set(documentUri, []);
+}
+
 export async function convertToTabsPicker(): Promise<boolean> {
     let i = 0;
     const result = await window.showQuickPick(['Convert', 'Disable'], {
@@ -80,6 +134,9 @@ export async function convertToTabsPicker(): Promise<boolean> {
 async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Position,
     decorationType: TextEditorDecorationType,
     decorationTypeBlock: TextEditorDecorationType) {
+
+    // Remove previously added spaces first
+    await removePreviouslyAddedSpaces(editor);
 
     const newDecorations = [new Range(currentPosition, currentPosition)];
     const newDecorationsLines = [new Range(currentPosition, currentPosition)];
@@ -98,6 +155,8 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
     }
 
     let prevChar = currentPosition.character > 0 ? currentPosition.character - 1 : 0;
+    const documentUri = editor.document.uri.toString();
+    const newAddedSpaces: AddedSpaces[] = [];
 
     try {
         for (let p = start_cline; p < end_cline; p++) {
@@ -141,6 +200,13 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
                     }
 
                     edit.insert(new Position(p, clineText.length), s);
+                    
+                    // Track the added spaces
+                    newAddedSpaces.push({
+                        line: p,
+                        startPos: clineText.length,
+                        length: missing
+                    });
                 }
                 let pos = new Position(p, prevChar);
                 let currentPos = new Position(p, currentPosition.character);
@@ -150,6 +216,10 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
         catch (e) {
             console.log("crosshair space filler", e);
         }
+        
+        // Store the tracking information for this document
+        addedSpacesMap.set(documentUri, newAddedSpaces);
+        
         editor.setDecorations(decorationType, newDecorations);
         editor.setDecorations(decorationTypeBlock, newDecorationsLines);
     });
@@ -166,6 +236,10 @@ function updateDecorations(activeTextEditor: TextEditor,
         const newDecorationsLines: Range[] = [];
         activeTextEditor.setDecorations(decorationType, newDecorations);
         activeTextEditor.setDecorations(decorationTypeBlock, newDecorationsLines);
+        
+        // Remove any added spaces when crosshair is disabled
+        removePreviouslyAddedSpaces(activeTextEditor);
+        
         window.showTextDocument(activeTextEditor.document);
         return;
     }
@@ -271,5 +345,12 @@ export function activate(context: ExtensionContext) {
 }
 
 // this method is called when your extension is deactivated
-export function deactivate() {
+export async function deactivate() {
+    // Clean up all added spaces when extension is deactivated
+    if (window.activeTextEditor) {
+        await removePreviouslyAddedSpaces(window.activeTextEditor);
+    }
+    
+    // Clear all tracking data
+    addedSpacesMap.clear();
 }
