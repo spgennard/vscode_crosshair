@@ -27,6 +27,9 @@ const savedCursorPositions = new Map<string, Position>();
 
 let toggleCrosshair: StatusBarItem;
 let isActive: boolean = getEnabledFromConfig();
+let decorationType: TextEditorDecorationType | undefined;
+let decorationTypeBlock: TextEditorDecorationType | undefined;
+let selectionUpdateTimeout: NodeJS.Timeout | undefined;
 
 function getEnabledFromConfig(): boolean {
     const config = workspace.getConfiguration("crosshair");
@@ -61,10 +64,15 @@ function getAddWhitespace(): boolean {
 }
 
 function getDecorationTypeFromConfig(): TextEditorDecorationType {
+    // Dispose existing decoration if it exists
+    if (decorationType) {
+        decorationType.dispose();
+    }
+    
     const config = workspace.getConfiguration("crosshair");
     const borderColor = config.get("borderColor");
     const borderWidth = config.get("borderWidth");
-    const decorationType = window.createTextEditorDecorationType({
+    decorationType = window.createTextEditorDecorationType({
         isWholeLine: true,
         borderWidth: `0 0 ${borderWidth} 0`,
         borderStyle: 'solid',
@@ -75,10 +83,15 @@ function getDecorationTypeFromConfig(): TextEditorDecorationType {
 }
 
 function getDecorationTypeCursorFromConfig(): TextEditorDecorationType {
+    // Dispose existing decoration if it exists
+    if (decorationTypeBlock) {
+        decorationTypeBlock.dispose();
+    }
+    
     const config = workspace.getConfiguration("crosshair");
     const borderColor = config.get("borderColor");
     const borderWidth = config.get("borderWidth");
-    const decorationType = window.createTextEditorDecorationType({
+    decorationTypeBlock = window.createTextEditorDecorationType({
         borderStyle: 'solid',
         rangeBehavior: DecorationRangeBehavior.ClosedClosed,
         borderWidth: `0 0 0 ${borderWidth}`,
@@ -86,7 +99,7 @@ function getDecorationTypeCursorFromConfig(): TextEditorDecorationType {
         backgroundColor: 'transparent'
     });
 
-    return decorationType;
+    return decorationTypeBlock;
 }
 
 async function removePreviouslyAddedSpaces(editor: TextEditor): Promise<void> {
@@ -187,8 +200,21 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
                     window.showInformationMessage("Crosshair: Tabs found in document, extension is disabled");
                     return;
                 }
+                
+                // Ask user for confirmation before destructive tab conversion
+                const shouldConvert = await window.showWarningMessage(
+                    'Document contains tabs. Convert entire document to spaces for crosshair display?',
+                    'Convert', 'Disable Crosshair'
+                );
+                
+                if (shouldConvert !== 'Convert') {
+                    isActive = false;
+                    window.showInformationMessage("Crosshair: Disabled due to tabs in document");
+                    return;
+                }
+                
                 await commands.executeCommand('editor.action.indentationToSpaces');
-                p = start_cline; // reset loop
+                // Don't reset loop to prevent infinite loops - just continue
                 isActive = true;
             }
         }
@@ -298,15 +324,15 @@ function updateDecorations(activeTextEditor: TextEditor,
 // your extension is activated the very first time the command is executed
 export function activate(context: ExtensionContext) {
 
-    let decorationTypeBlock = getDecorationTypeCursorFromConfig();
-    let decorationType = getDecorationTypeFromConfig();
+    decorationTypeBlock = getDecorationTypeCursorFromConfig();
+    decorationType = getDecorationTypeFromConfig();
 
     let timeout: NodeJS.Timeout | undefined = undefined;
 
     window.onDidChangeActiveTextEditor(() => {
         if (window.activeTextEditor !== undefined) {
             try {
-                updateDecorations(window.activeTextEditor, decorationType, decorationTypeBlock);
+                updateDecorations(window.activeTextEditor, decorationType!, decorationTypeBlock!);
             } catch (error) {
                 console.log("crosshair 'window.onDidChangeActiveTextEditor' -->", error);
             }
@@ -315,7 +341,15 @@ export function activate(context: ExtensionContext) {
 
     window.onDidChangeTextEditorSelection(() => {
         if (window.activeTextEditor !== undefined) {
-            updateDecorations(window.activeTextEditor, decorationType, decorationTypeBlock);
+            // Debounce selection changes to improve performance
+            if (selectionUpdateTimeout) {
+                clearTimeout(selectionUpdateTimeout);
+            }
+            selectionUpdateTimeout = setTimeout(() => {
+                if (window.activeTextEditor) {
+                    updateDecorations(window.activeTextEditor, decorationType!, decorationTypeBlock!);
+                }
+            }, 100); // 100ms debounce to reduce excessive updates
         }
     });
 
@@ -348,7 +382,7 @@ export function activate(context: ExtensionContext) {
                 if (window.activeTextEditor && window.activeTextEditor.document === document) {
                     // Use saved cursor position, not current position to avoid race conditions
                     updateDecorationsOnEditor(window.activeTextEditor, savedPosition, 
-                                             decorationType, decorationTypeBlock);
+                                             decorationType!, decorationTypeBlock!);
                 }
                 // Clean up stored position
                 savedCursorPositions.delete(documentUri);
@@ -391,7 +425,7 @@ export function activate(context: ExtensionContext) {
         if (!activeEditor) {
             return;
         }
-        updateDecorations(activeEditor, decorationType, decorationTypeBlock);
+        updateDecorations(activeEditor, decorationType!, decorationTypeBlock!);
     }
 
     function triggerUpdateDecorations() {
@@ -420,6 +454,16 @@ export async function deactivate() {
             await removePreviouslyAddedSpaces(editor);
         }
     }
+    
+    // Clear all timeouts
+    if (selectionUpdateTimeout) {
+        clearTimeout(selectionUpdateTimeout);
+        selectionUpdateTimeout = undefined;
+    }
+    
+    // Dispose decoration types
+    decorationType?.dispose();
+    decorationTypeBlock?.dispose();
     
     // Clear all tracking data
     addedSpacesMap.clear();
