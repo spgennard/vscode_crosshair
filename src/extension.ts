@@ -22,6 +22,9 @@ interface AddedSpaces {
 // Map to track added spaces by document URI
 const addedSpacesMap = new Map<string, AddedSpaces[]>();
 
+// Map to store cursor positions during save/restore cycle
+const savedCursorPositions = new Map<string, Position>();
+
 let toggleCrosshair: StatusBarItem;
 let isActive: boolean = getEnabledFromConfig();
 
@@ -326,21 +329,41 @@ export function activate(context: ExtensionContext) {
     workspace.onWillSaveTextDocument(async (event) => {
         if (getAddWhitespace() && window.activeTextEditor && 
             event.document === window.activeTextEditor.document) {
+            // Store current cursor position to restore spaces at correct location
+            savedCursorPositions.set(event.document.uri.toString(), 
+                                   window.activeTextEditor.selection.active);
             await removePreviouslyAddedSpaces(window.activeTextEditor);
         }
     }, null, context.subscriptions);
 
     // Re-add spaces after save completes for continued crosshair display
     workspace.onDidSaveTextDocument(async (document) => {
+        const documentUri = document.uri.toString();
+        const savedPosition = savedCursorPositions.get(documentUri);
+        
         if (getAddWhitespace() && window.activeTextEditor && 
-            document === window.activeTextEditor.document && isActive) {
+            document === window.activeTextEditor.document && isActive && savedPosition) {
             // Small delay to ensure save is complete
             setTimeout(() => {
-                if (window.activeTextEditor) {
-                    updateDecorations(window.activeTextEditor, decorationType, decorationTypeBlock);
+                if (window.activeTextEditor && window.activeTextEditor.document === document) {
+                    // Use saved cursor position, not current position to avoid race conditions
+                    updateDecorationsOnEditor(window.activeTextEditor, savedPosition, 
+                                             decorationType, decorationTypeBlock);
                 }
+                // Clean up stored position
+                savedCursorPositions.delete(documentUri);
             }, 50);
+        } else {
+            // Clean up stored position if we're not restoring
+            savedCursorPositions.delete(documentUri);
         }
+    }, null, context.subscriptions);
+
+    // Clean up tracking data when documents are closed to prevent memory leaks
+    workspace.onDidCloseTextDocument((document) => {
+        const documentUri = document.uri.toString();
+        addedSpacesMap.delete(documentUri);
+        savedCursorPositions.delete(documentUri);
     }, null, context.subscriptions);
 
     var toggleCrosshairCommand = commands.registerCommand('crosshair.toggle_crosshair', function () {
@@ -400,4 +423,5 @@ export async function deactivate() {
     
     // Clear all tracking data
     addedSpacesMap.clear();
+    savedCursorPositions.clear();
 }
