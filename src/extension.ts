@@ -78,8 +78,9 @@ function getDecorationTypeCursorFromConfig(): TextEditorDecorationType {
     const decorationType = window.createTextEditorDecorationType({
         borderStyle: 'solid',
         rangeBehavior: DecorationRangeBehavior.ClosedClosed,
-        borderWidth: `0 ${borderWidth} 0 0`,
-        borderColor: `${borderColor}`
+        borderWidth: `0 0 0 ${borderWidth}`,
+        borderColor: `${borderColor}`,
+        backgroundColor: 'transparent'
     });
 
     return decorationType;
@@ -220,26 +221,33 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
                         length: missing
                     });
                 }
-                
-                // Calculate decoration position based on actual line length and settings
-                let decorationChar = shouldAddWhitespace ? currentPosition.character : Math.min(currentPosition.character, clineText.length);
-                let pos = new Position(p, Math.min(prevChar, clineText.length));
-                let currentPos = new Position(p, decorationChar);
-                newDecorationsLines.push(new Range(pos, currentPos));
             }
         }
         catch (e) {
             console.log("crosshair space filler", e);
         }
-        
-        // Store the tracking information for this document only if we're adding whitespace
-        if (shouldAddWhitespace) {
-            addedSpacesMap.set(documentUri, newAddedSpaces);
-        }
-        
-        editor.setDecorations(decorationType, newDecorations);
-        editor.setDecorations(decorationTypeBlock, newDecorationsLines);
     });
+    
+    // Apply decorations after text edits are complete
+    // This ensures positions are calculated with updated line lengths
+    for (let p = start_cline; p < end_cline; p++) {
+        if (p > maxLines) {
+            break;
+        }
+        let cline = editor.document.lineAt(p);
+        
+        // Calculate decoration position - use the cursor column consistently
+        let columnPos = new Position(p, currentPosition.character);
+        newDecorationsLines.push(new Range(columnPos, columnPos));
+    }
+        
+    // Store the tracking information for this document only if we're adding whitespace
+    if (shouldAddWhitespace) {
+        addedSpacesMap.set(documentUri, newAddedSpaces);
+    }
+    
+    editor.setDecorations(decorationType, newDecorations);
+    editor.setDecorations(decorationTypeBlock, newDecorationsLines);
 }
 
 
@@ -266,17 +274,14 @@ function updateDecorations(activeTextEditor: TextEditor,
     try {
         if (updateAllVisibleEditors) {
             window.visibleTextEditors.forEach((editor) => {
-                updateDecorationsOnEditor(activeTextEditor, activeTextEditor.selection.active, decorationType, decorationTypeBlock);
+                updateDecorationsOnEditor(editor, editor.selection.active, decorationType, decorationTypeBlock);
             });
         }
 
         else {
-            window.visibleTextEditors.forEach((editor) => {
-                if (editor !== window.activeTextEditor) {
-                    return;
-                }
+            if (window.activeTextEditor) {
                 updateDecorationsOnEditor(activeTextEditor, activeTextEditor.selection.active, decorationType, decorationTypeBlock);
-            });
+            }
         }
     }
     catch (error) {
