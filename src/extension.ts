@@ -34,6 +34,12 @@ let updateTimeout: NodeJS.Timeout | undefined;
 // Guard flag to prevent feedback loops when we modify the document
 let isUpdatingDecorations: boolean = false;
 
+// Cached configuration values to avoid repeated config reads
+let cachedSize: number | undefined;
+let cachedRefreshRate: number | undefined;
+let cachedAutoTabToSpaces: boolean | undefined;
+let cachedAddWhitespace: boolean | undefined;
+
 function getEnabledFromConfig(): boolean {
     const config = workspace.getConfiguration("crosshair");
 
@@ -43,27 +49,47 @@ function getEnabledFromConfig(): boolean {
 }
 
 function getSize(): number {
+    if (cachedSize !== undefined) {
+        return cachedSize;
+    }
     const config = workspace.getConfiguration("crosshair");
-
-    return config.get<number>("size", 10);
+    cachedSize = config.get<number>("size", 10);
+    return cachedSize;
 }
 
 function getRefreshRate(): number {
+    if (cachedRefreshRate !== undefined) {
+        return cachedRefreshRate;
+    }
     const config = workspace.getConfiguration("crosshair");
-
-    return config.get<number>("refreshRate", 500);
+    cachedRefreshRate = config.get<number>("refreshRate", 500);
+    return cachedRefreshRate;
 }
 
 function getAutoTabToSpaces(): boolean {
+    if (cachedAutoTabToSpaces !== undefined) {
+        return cachedAutoTabToSpaces;
+    }
     const config = workspace.getConfiguration("crosshair");
-
-    return config.get<boolean>("autoTabToSpace", true);
+    cachedAutoTabToSpaces = config.get<boolean>("autoTabToSpace", true);
+    return cachedAutoTabToSpaces;
 }
 
 function getAddWhitespace(): boolean {
+    if (cachedAddWhitespace !== undefined) {
+        return cachedAddWhitespace;
+    }
     const config = workspace.getConfiguration("crosshair");
+    cachedAddWhitespace = config.get<boolean>("addWhitespace", true);
+    return cachedAddWhitespace;
+}
 
-    return config.get<boolean>("addWhitespace", true);
+// Clear cached config values when configuration changes
+function invalidateConfigCache(): void {
+    cachedSize = undefined;
+    cachedRefreshRate = undefined;
+    cachedAutoTabToSpaces = undefined;
+    cachedAddWhitespace = undefined;
 }
 
 function getDecorationTypeFromConfig(): TextEditorDecorationType {
@@ -187,6 +213,9 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
     const documentUri = editor.document.uri.toString();
     const newAddedSpaces: AddedSpaces[] = [];
 
+    // Cache autoTabToSpaces value before loop to avoid repeated config reads
+    const autoTabToSpaces = getAutoTabToSpaces();
+    
     try {
         for (let p = start_cline; p < end_cline; p++) {
             if (p >= maxLines) {
@@ -195,7 +224,6 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
             let cline = editor.document.lineAt(p);
             let clineText = cline.text;
             if (clineText.indexOf("\t") !== -1) {
-                let autoTabToSpaces = await getAutoTabToSpaces();
                 if (!autoTabToSpaces) {
                     isActive = false;
                     window.showInformationMessage("Crosshair: Tabs found in document, extension is disabled");
@@ -345,6 +373,24 @@ export function activate(context: ExtensionContext) {
 
     decorationTypeBlock = getDecorationTypeCursorFromConfig();
     decorationType = getDecorationTypeFromConfig();
+
+    // Listen for configuration changes to invalidate cache and update decorations
+    const onConfigChange = workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('crosshair')) {
+            invalidateConfigCache();
+            // Recreate decoration types if visual settings changed
+            if (e.affectsConfiguration('crosshair.borderColor') || 
+                e.affectsConfiguration('crosshair.borderWidth')) {
+                decorationType = getDecorationTypeFromConfig();
+                decorationTypeBlock = getDecorationTypeCursorFromConfig();
+            }
+            // Trigger update with new settings
+            if (window.activeTextEditor) {
+                updateDecorations(window.activeTextEditor, decorationType!, decorationTypeBlock!);
+            }
+        }
+    });
+    context.subscriptions.push(onConfigChange);
 
     const onActiveEditorChange = window.onDidChangeActiveTextEditor(() => {
         if (window.activeTextEditor !== undefined) {
