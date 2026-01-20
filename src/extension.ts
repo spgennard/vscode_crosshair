@@ -322,6 +322,27 @@ export function activate(context: ExtensionContext) {
         }
     }, null, context.subscriptions);
 
+    // Intercept save to remove added spaces before saving
+    workspace.onWillSaveTextDocument(async (event) => {
+        if (getAddWhitespace() && window.activeTextEditor && 
+            event.document === window.activeTextEditor.document) {
+            await removePreviouslyAddedSpaces(window.activeTextEditor);
+        }
+    }, null, context.subscriptions);
+
+    // Re-add spaces after save completes for continued crosshair display
+    workspace.onDidSaveTextDocument(async (document) => {
+        if (getAddWhitespace() && window.activeTextEditor && 
+            document === window.activeTextEditor.document && isActive) {
+            // Small delay to ensure save is complete
+            setTimeout(() => {
+                if (window.activeTextEditor) {
+                    updateDecorations(window.activeTextEditor, decorationType, decorationTypeBlock);
+                }
+            }, 50);
+        }
+    }, null, context.subscriptions);
+
     var toggleCrosshairCommand = commands.registerCommand('crosshair.toggle_crosshair', function () {
         isActive = !isActive;
         const config = workspace.getConfiguration("crosshair");
@@ -370,9 +391,11 @@ export function activate(context: ExtensionContext) {
 
 // this method is called when your extension is deactivated
 export async function deactivate() {
-    // Clean up all added spaces when extension is deactivated, but only if whitespace mode is enabled
-    if (window.activeTextEditor && getAddWhitespace()) {
-        await removePreviouslyAddedSpaces(window.activeTextEditor);
+    // Clean up all added spaces from all documents when extension is deactivated
+    if (getAddWhitespace()) {
+        for (const editor of window.visibleTextEditors) {
+            await removePreviouslyAddedSpaces(editor);
+        }
     }
     
     // Clear all tracking data
