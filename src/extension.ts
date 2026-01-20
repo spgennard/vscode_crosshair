@@ -40,6 +40,12 @@ let cachedRefreshRate: number | undefined;
 let cachedAutoTabToSpaces: boolean | undefined;
 let cachedAddWhitespace: boolean | undefined;
 
+// Track last cursor position per document to skip redundant updates
+const lastCursorPositions = new Map<string, { line: number; character: number }>();
+
+// Reusable empty arrays to avoid allocations when clearing decorations
+const EMPTY_RANGE_ARRAY: Range[] = [];
+
 function getEnabledFromConfig(): boolean {
     const config = workspace.getConfiguration("crosshair");
 
@@ -183,14 +189,30 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
         return;
     }
     
+    const documentUri = editor.document.uri.toString();
+    const lastPos = lastCursorPositions.get(documentUri);
+    
+    // Skip update if cursor position hasn't changed (performance optimization)
+    // This avoids redundant decoration updates and space manipulations
+    if (lastPos && lastPos.line === currentPosition.line && lastPos.character === currentPosition.character) {
+        return;
+    }
+    
     isUpdatingDecorations = true;
     
     try {
+        // Update last known position
+        lastCursorPositions.set(documentUri, { line: currentPosition.line, character: currentPosition.character });
+        
         const shouldAddWhitespace = getAddWhitespace();
         
-        // Only remove previously added spaces if we're still in whitespace mode
-        // to avoid cleanup loops when the setting changes
-        if (shouldAddWhitespace) {
+        // Only remove previously added spaces if cursor column changed
+        // This avoids unnecessary edits when just moving up/down in same column
+        const prevSpaces = addedSpacesMap.get(documentUri);
+        const needsSpaceCleanup = shouldAddWhitespace && prevSpaces && prevSpaces.length > 0 &&
+            (!lastPos || lastPos.character !== currentPosition.character);
+        
+        if (needsSpaceCleanup) {
             await removePreviouslyAddedSpaces(editor);
         }
 
@@ -210,7 +232,6 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
         end_cline = maxLines;
     }
 
-    const documentUri = editor.document.uri.toString();
     const newAddedSpaces: AddedSpaces[] = [];
 
     // Cache autoTabToSpaces value before loop to avoid repeated config reads
@@ -333,10 +354,9 @@ function updateDecorations(activeTextEditor: TextEditor,
     updateAllVisibleEditors = false) {
 
     if (!isActive) {
-        const newDecorations: Range[] = [];
-        const newDecorationsLines: Range[] = [];
-        activeTextEditor.setDecorations(decorationType, newDecorations);
-        activeTextEditor.setDecorations(decorationTypeBlock, newDecorationsLines);
+        // Use reusable empty arrays to avoid allocations
+        activeTextEditor.setDecorations(decorationType, EMPTY_RANGE_ARRAY);
+        activeTextEditor.setDecorations(decorationTypeBlock, EMPTY_RANGE_ARRAY);
         
         // Remove any added spaces when crosshair is disabled
         if (getAddWhitespace()) {
@@ -467,6 +487,7 @@ export function activate(context: ExtensionContext) {
         const documentUri = document.uri.toString();
         addedSpacesMap.delete(documentUri);
         savedCursorPositions.delete(documentUri);
+        lastCursorPositions.delete(documentUri);
     }, null, context.subscriptions);
 
     var toggleCrosshairCommand = commands.registerCommand('crosshair.toggle_crosshair', function () {
@@ -542,4 +563,5 @@ export async function deactivate() {
     // Clear all tracking data
     addedSpacesMap.clear();
     savedCursorPositions.clear();
+    lastCursorPositions.clear();
 }
