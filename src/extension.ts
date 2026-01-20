@@ -51,6 +51,12 @@ function getAutoTabToSpaces(): boolean {
     return config.get<boolean>("autoTabToSpace", true);
 }
 
+function getAddWhitespace(): boolean {
+    const config = workspace.getConfiguration("crosshair");
+
+    return config.get<boolean>("addWhitespace", true);
+}
+
 function getDecorationTypeFromConfig(): TextEditorDecorationType {
     const config = workspace.getConfiguration("crosshair");
     const borderColor = config.get("borderColor");
@@ -135,8 +141,13 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
     decorationType: TextEditorDecorationType,
     decorationTypeBlock: TextEditorDecorationType) {
 
-    // Remove previously added spaces first
-    await removePreviouslyAddedSpaces(editor);
+    const shouldAddWhitespace = getAddWhitespace();
+    
+    // Only remove previously added spaces if we're still in whitespace mode
+    // to avoid cleanup loops when the setting changes
+    if (shouldAddWhitespace) {
+        await removePreviouslyAddedSpaces(editor);
+    }
 
     const newDecorations = [new Range(currentPosition, currentPosition)];
     const newDecorationsLines = [new Range(currentPosition, currentPosition)];
@@ -192,7 +203,8 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
                 let clineText = cline.text;
                 let missing = currentPosition.character - clineText.length;
 
-                if (missing > 0) {
+                // Only add whitespace if the configuration allows it
+                if (shouldAddWhitespace && missing > 0) {
                     let c = 0;
                     let s = "";
                     for (c = 0; c < missing; c++) {
@@ -208,8 +220,11 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
                         length: missing
                     });
                 }
-                let pos = new Position(p, prevChar);
-                let currentPos = new Position(p, currentPosition.character);
+                
+                // Calculate decoration position based on actual line length and settings
+                let decorationChar = shouldAddWhitespace ? currentPosition.character : Math.min(currentPosition.character, clineText.length);
+                let pos = new Position(p, Math.min(prevChar, clineText.length));
+                let currentPos = new Position(p, decorationChar);
                 newDecorationsLines.push(new Range(pos, currentPos));
             }
         }
@@ -217,8 +232,10 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
             console.log("crosshair space filler", e);
         }
         
-        // Store the tracking information for this document
-        addedSpacesMap.set(documentUri, newAddedSpaces);
+        // Store the tracking information for this document only if we're adding whitespace
+        if (shouldAddWhitespace) {
+            addedSpacesMap.set(documentUri, newAddedSpaces);
+        }
         
         editor.setDecorations(decorationType, newDecorations);
         editor.setDecorations(decorationTypeBlock, newDecorationsLines);
@@ -238,7 +255,9 @@ function updateDecorations(activeTextEditor: TextEditor,
         activeTextEditor.setDecorations(decorationTypeBlock, newDecorationsLines);
         
         // Remove any added spaces when crosshair is disabled
-        removePreviouslyAddedSpaces(activeTextEditor);
+        if (getAddWhitespace()) {
+            removePreviouslyAddedSpaces(activeTextEditor);
+        }
         
         window.showTextDocument(activeTextEditor.document);
         return;
@@ -346,8 +365,8 @@ export function activate(context: ExtensionContext) {
 
 // this method is called when your extension is deactivated
 export async function deactivate() {
-    // Clean up all added spaces when extension is deactivated
-    if (window.activeTextEditor) {
+    // Clean up all added spaces when extension is deactivated, but only if whitespace mode is enabled
+    if (window.activeTextEditor && getAddWhitespace()) {
         await removePreviouslyAddedSpaces(window.activeTextEditor);
     }
     

@@ -64,6 +64,11 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Automatically convert tabs to spaces"
+                },
+                "crosshair.addWhitespace": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Add whitespace to extend short lines for crosshair display. When enabled, allows block selection beyond line ends but modifies file content. When disabled, crosshair stops at line end but preserves file content."
                 }
             }
         },
