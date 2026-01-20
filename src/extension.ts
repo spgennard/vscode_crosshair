@@ -31,6 +31,8 @@ let decorationType: TextEditorDecorationType | undefined;
 let decorationTypeBlock: TextEditorDecorationType | undefined;
 let selectionUpdateTimeout: NodeJS.Timeout | undefined;
 let updateTimeout: NodeJS.Timeout | undefined;
+// Guard flag to prevent feedback loops when we modify the document
+let isUpdatingDecorations: boolean = false;
 
 function getEnabledFromConfig(): boolean {
     const config = workspace.getConfiguration("crosshair");
@@ -150,16 +152,24 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
     decorationType: TextEditorDecorationType,
     decorationTypeBlock: TextEditorDecorationType) {
 
-    const shouldAddWhitespace = getAddWhitespace();
-    
-    // Only remove previously added spaces if we're still in whitespace mode
-    // to avoid cleanup loops when the setting changes
-    if (shouldAddWhitespace) {
-        await removePreviouslyAddedSpaces(editor);
+    // Prevent re-entry while we're updating
+    if (isUpdatingDecorations) {
+        return;
     }
+    
+    isUpdatingDecorations = true;
+    
+    try {
+        const shouldAddWhitespace = getAddWhitespace();
+        
+        // Only remove previously added spaces if we're still in whitespace mode
+        // to avoid cleanup loops when the setting changes
+        if (shouldAddWhitespace) {
+            await removePreviouslyAddedSpaces(editor);
+        }
 
+    // Single decoration for the horizontal line at cursor position
     const newDecorations = [new Range(currentPosition, currentPosition)];
-    const newDecorationsLines = [new Range(currentPosition, currentPosition)];
 
     let maxLines = editor.document.lineCount;
     let config_size: number = getSize();
@@ -170,7 +180,7 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
         start_cline = 0;
     }
 
-    if (end_cline > maxLines) {
+    if (end_cline >= maxLines) {
         end_cline = maxLines;
     }
 
@@ -179,7 +189,7 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
 
     try {
         for (let p = start_cline; p < end_cline; p++) {
-            if (p > maxLines) {
+            if (p >= maxLines) {
                 break;
             }
             let cline = editor.document.lineAt(p);
@@ -214,10 +224,11 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
         console.log("crosshair tabconvert", e);
     }
 
-    await editor.edit(async edit => {
+    // First, add any necessary whitespace and wait for edits to complete
+    const editSuccess = await editor.edit(edit => {
         try {
             for (let p = start_cline; p < end_cline; p++) {
-                if (p > maxLines) {
+                if (p >= maxLines) {
                     break;
                 }
                 let cline = editor.document.lineAt(p);
@@ -226,12 +237,7 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
 
                 // Only add whitespace if the configuration allows it
                 if (shouldAddWhitespace && missing > 0) {
-                    let c = 0;
-                    let s = "";
-                    for (c = 0; c < missing; c++) {
-                        s += " ";
-                    }
-
+                    let s = " ".repeat(missing);
                     edit.insert(new Position(p, clineText.length), s);
                     
                     // Track the added spaces
@@ -247,18 +253,37 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
             console.log("crosshair space filler", e);
         }
     });
+
+    // Only proceed with decorations if edit was successful (or no edit needed)
+    // This ensures document state is stable before applying decorations
     
-    // Apply decorations after text edits are complete
-    // This ensures positions are calculated with updated line lengths
+    // Build vertical line decorations AFTER edits are complete
+    // This ensures we read the updated line lengths
+    const newDecorationsLines: Range[] = [];
+    
     for (let p = start_cline; p < end_cline; p++) {
-        if (p > maxLines) {
+        if (p >= maxLines) {
             break;
         }
+        // Re-read line after potential edits
         let cline = editor.document.lineAt(p);
+        let lineLength = cline.text.length;
         
-        // Calculate decoration position - use the cursor column consistently
-        let columnPos = new Position(p, currentPosition.character);
-        newDecorationsLines.push(new Range(columnPos, columnPos));
+        // CRITICAL FIX: Only apply decoration if the line is long enough
+        // to reach the cursor column. This prevents decorations from being
+        // placed at invalid positions (like column 0 when cursor is elsewhere)
+        // which causes the blinking issue.
+        if (lineLength >= currentPosition.character) {
+            let columnPos = new Position(p, currentPosition.character);
+            newDecorationsLines.push(new Range(columnPos, columnPos));
+        } else if (!shouldAddWhitespace && lineLength > 0) {
+            // If not adding whitespace but line has content, place decoration
+            // at end of line as a fallback (better than column 0)
+            let columnPos = new Position(p, lineLength);
+            newDecorationsLines.push(new Range(columnPos, columnPos));
+        }
+        // If line is empty and we're not adding whitespace, skip decoration
+        // for this line entirely to avoid column 0 blinking
     }
         
     // Store the tracking information for this document only if we're adding whitespace
@@ -268,8 +293,11 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
     
     editor.setDecorations(decorationType, newDecorations);
     editor.setDecorations(decorationTypeBlock, newDecorationsLines);
+    
+    } finally {
+        isUpdatingDecorations = false;
+    }
 }
-
 
 function updateDecorations(activeTextEditor: TextEditor,
     decorationType: TextEditorDecorationType,
@@ -345,6 +373,10 @@ export function activate(context: ExtensionContext) {
     context.subscriptions.push(onSelectionChange);
 
     workspace.onDidChangeTextDocument(event => {
+        // Skip if we're the ones making the document changes (prevents feedback loop)
+        if (isUpdatingDecorations) {
+            return;
+        }
         if (activeEditor && event.document === activeEditor.document) {
             triggerUpdateDecorations();
         }
