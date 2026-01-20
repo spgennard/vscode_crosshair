@@ -2,7 +2,7 @@
     "name": "vscode-crosshair",
     "displayName": "Editor Crosshair",
     "description": "Displays both a horizontal and vertical ruler at the cursor position",
-    "version": "0.6.0",
+    "version": "0.7.0",
     "publisher": "bitlang",
     "engines": {
         "vscode": "^1.94.0"
