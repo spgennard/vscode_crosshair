@@ -30,6 +30,7 @@ let isActive: boolean = getEnabledFromConfig();
 let decorationType: TextEditorDecorationType | undefined;
 let decorationTypeBlock: TextEditorDecorationType | undefined;
 let selectionUpdateTimeout: NodeJS.Timeout | undefined;
+let updateTimeout: NodeJS.Timeout | undefined;
 
 function getEnabledFromConfig(): boolean {
     const config = workspace.getConfiguration("crosshair");
@@ -145,15 +146,6 @@ async function removePreviouslyAddedSpaces(editor: TextEditor): Promise<void> {
     addedSpacesMap.set(documentUri, []);
 }
 
-export async function convertToTabsPicker(): Promise<boolean> {
-    let i = 0;
-    const result = await window.showQuickPick(['Convert', 'Disable'], {
-        placeHolder: 'crosshair extensions found tabs in current document\n \'Convert\' to spaces or \'Disable\'?'
-    });
-
-    return `${result}` === "Convert" ? true : false;
-}
-
 async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Position,
     decorationType: TextEditorDecorationType,
     decorationTypeBlock: TextEditorDecorationType) {
@@ -182,7 +174,6 @@ async function updateDecorationsOnEditor(editor: TextEditor, currentPosition: Po
         end_cline = maxLines;
     }
 
-    let prevChar = currentPosition.character > 0 ? currentPosition.character - 1 : 0;
     const documentUri = editor.document.uri.toString();
     const newAddedSpaces: AddedSpaces[] = [];
 
@@ -327,9 +318,7 @@ export function activate(context: ExtensionContext) {
     decorationTypeBlock = getDecorationTypeCursorFromConfig();
     decorationType = getDecorationTypeFromConfig();
 
-    let timeout: NodeJS.Timeout | undefined = undefined;
-
-    window.onDidChangeActiveTextEditor(() => {
+    const onActiveEditorChange = window.onDidChangeActiveTextEditor(() => {
         if (window.activeTextEditor !== undefined) {
             try {
                 updateDecorations(window.activeTextEditor, decorationType!, decorationTypeBlock!);
@@ -338,8 +327,9 @@ export function activate(context: ExtensionContext) {
             }
         }
     });
+    context.subscriptions.push(onActiveEditorChange);
 
-    window.onDidChangeTextEditorSelection(() => {
+    const onSelectionChange = window.onDidChangeTextEditorSelection(() => {
         if (window.activeTextEditor !== undefined) {
             // Debounce selection changes to improve performance
             if (selectionUpdateTimeout) {
@@ -352,6 +342,7 @@ export function activate(context: ExtensionContext) {
             }, 100); // 100ms debounce to reduce excessive updates
         }
     });
+    context.subscriptions.push(onSelectionChange);
 
     workspace.onDidChangeTextDocument(event => {
         if (activeEditor && event.document === activeEditor.document) {
@@ -418,6 +409,7 @@ export function activate(context: ExtensionContext) {
     toggleCrosshair.text = "+";
     toggleCrosshair.command = "crosshair.toggle_crosshair";
     toggleCrosshair.show();
+    context.subscriptions.push(toggleCrosshair);
 
     let activeEditor = window.activeTextEditor;
 
@@ -429,11 +421,11 @@ export function activate(context: ExtensionContext) {
     }
 
     function triggerUpdateDecorations() {
-        if (timeout) {
-            clearTimeout(timeout);
-            timeout = undefined;
+        if (updateTimeout) {
+            clearTimeout(updateTimeout);
+            updateTimeout = undefined;
         }
-        timeout = setTimeout(updateDecorationsTimer, getRefreshRate());
+        updateTimeout = setTimeout(updateDecorationsTimer, getRefreshRate());
     }
 
     if (activeEditor) {
@@ -459,6 +451,10 @@ export async function deactivate() {
     if (selectionUpdateTimeout) {
         clearTimeout(selectionUpdateTimeout);
         selectionUpdateTimeout = undefined;
+    }
+    if (updateTimeout) {
+        clearTimeout(updateTimeout);
+        updateTimeout = undefined;
     }
     
     // Dispose decoration types
