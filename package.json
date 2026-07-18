@@ -5,7 +5,7 @@
     "version": "0.7.6",
     "publisher": "bitlang",
     "engines": {
-        "vscode": "^1.94.0"
+        "vscode": "^1.129.0"
     },
     "categories": [
         "Other"
@@ -92,16 +92,19 @@
         "test": "npm run compile && node ./node_modules/vscode/bin/test"
     },
     "devDependencies": {
-        "@types/mocha": "^10.0.9",
-        "@types/node": "^22.7.6",
-        "@types/vscode": "^1.94.0",
-        "@vscode/vsce": "^3.2.0",
+        "@types/mocha": "^10.0.10",
+        "@types/node": "^26.1.1",
+        "@types/vscode": "^1.125.0",
+        "@vscode/vsce": "^3.9.2",
         "depcheck": "^1.4.7",
         "esbuild": "^0.28.1",
-        "eslint": "^9.12.0",
-        "glob": "^11.0.0",
-        "mocha": "^10.7.3",
+        "eslint": "^10.7.0",
+        "glob": "^13.0.6",
+        "mocha": "^11.7.6",
         "npm-run-all": "^4.1.5",
-        "typescript": "^5.6.3"
+        "typescript": "^7.0.2"
+    },
+    "dependencies": {
+        "npm-check-updates": "^22.2.9"
     }
 }

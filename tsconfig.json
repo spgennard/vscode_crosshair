@@ -2,11 +2,14 @@
     "compilerOptions": {
         "experimentalDecorators": true,
         "module": "commonjs",
-        "target": "es6",
+        "target": "ES2022",
         "outDir": "out",
         "lib": [
-             "es6",
-             "es2020.string"
+             "ES2022"
+        ],
+        "types": [
+            "node",
+            "vscode"
         ],
         "sourceMap": true,
         "rootDir": "src",
